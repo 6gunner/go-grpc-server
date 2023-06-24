@@ -113,6 +113,66 @@ func (s *server) UpdateOrder(orderServerStream om.OrderManagement_UpdateOrderSer
 		log.Printf("Order ID ", order.Id, " 更新完成")
 		ordersStr += order.Id + ","
 	}
+
+}
+
+/*
+* 处理订单，打包发货
+双向rpc通道处理订单
+*/
+func (s *server) ProcessOrder(orderServerStream om.OrderManagement_ProcessOrderServer) error {
+	//TODO implement me
+	batchMarker := 1
+	// 创建一个map对象，映射对应的orderId和CombinedShipment
+	var combinedShipmentMap = make(map[string]om.CombinedShipment)
+	for {
+		orderId, err := orderServerStream.Recv()
+		log.Printf("读取ProcessOrder的消息 : %s", orderId)
+		if err == io.EOF { // 流结束了
+			log.Printf("EOF : %s", orderId)
+			for _, shipment := range combinedShipmentMap {
+				if err := orderServerStream.Send(&shipment); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+
+		destination := orderMap[orderId.GetValue()].Destination
+		shipment, found := combinedShipmentMap[destination]
+
+		// 有同一个目的地的
+		if found {
+			ord := orderMap[orderId.GetValue()]
+			shipment.OrderList = append(shipment.OrderList, &ord)
+			combinedShipmentMap[destination] = shipment
+		} else {
+			ord := orderMap[orderId.GetValue()]
+			comShip := om.CombinedShipment{
+				Id:     "cmb-" + (ord.Destination),
+				Status: "Processed!",
+			}
+			comShip.OrderList = append(shipment.OrderList, &ord)
+			combinedShipmentMap[destination] = comShip
+		}
+
+		if batchMarker == orderBatchSize {
+			for _, comb := range combinedShipmentMap {
+				log.Printf("运送 : %v -> %v", comb.Id, len(comb.OrderList))
+				if err := orderServerStream.Send(&comb); err != nil {
+					return err
+				}
+			}
+			batchMarker = 0
+			combinedShipmentMap = make(map[string]om.CombinedShipment)
+		} else {
+			batchMarker++
+		}
+	}
 }
 
 func main() {

@@ -8,9 +8,10 @@ service OrderManagement {
   rpc getOrder(google.protobuf.StringValue) returns (Order);
   //  返回响应流
   rpc searchOrder(google.protobuf.StringValue) returns (stream Order);
-
   // 更新订单
   rpc updateOrder(stream Order) returns (google.protobuf.StringValue);
+  // 双向rpc流模式
+  rpc processOrder(stream google.protobuf.StringValue) returns (stream CombinedShipment);
 }
 
 message Order {
@@ -19,4 +20,11 @@ message Order {
   string description = 3;
   float price = 4;
   string destination = 5;
+}
+
+// 打包发货
+message CombinedShipment {
+  string id = 1;
+  string status = 2;
+  repeated Order orderList = 3;
 }

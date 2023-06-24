@@ -83,6 +83,17 @@ func main() {
 	if err := updateOrderStream.Send(&updateOrder3); err != nil {
 		log.Fatalf("%v.Send(%v) = %v", updateOrderStream, updateOrder3, err)
 	}
+	// 添加订单4
+	updateOrder4 := om.Order{Id: "105", Items: []string{"Amazon Echo"}, Destination: "San Jose, CA", Price: 30.00}
+	if err := updateOrderStream.Send(&updateOrder4); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", updateOrderStream, updateOrder4, err)
+	}
+
+	// 添加订单5
+	updateOrder5 := om.Order{Id: "106", Items: []string{"Amazon Echo", "Apple iPhone XS"}, Destination: "Mountain View, CA", Price: 300.00}
+	if err := updateOrderStream.Send(&updateOrder5); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", updateOrderStream, updateOrder5, err)
+	}
 
 	updateRes, err := updateOrderStream.CloseAndRecv()
 	if err != nil {
@@ -90,24 +101,61 @@ func main() {
 	}
 	log.Printf("UpdateOrder resp : %s", updateRes)
 	// 搜索订单
-	searchStream, err := client2.SearchOrder(ctx, &wrapper.StringValue{Value: "Google"})
-	if err != nil {
-		log.Fatalf("SearchOrder Error %v", err)
-	}
-	if searchStream == nil {
-		log.Printf("搜索结果为空")
-	}
-	for {
-		searchOrder, err := searchStream.Recv()
-		// 如果流结束了
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Fatalf("搜索出错了, error = %v", err)
-		}
-		log.Printf("搜索结果 : ", searchOrder)
-		// todo 放到一个list里去
-	}
+	//searchStream, err := client2.SearchOrder(ctx, &wrapper.StringValue{Value: "Google"})
+	//if err != nil {
+	//	log.Fatalf("SearchOrder Error %v", err)
+	//}
+	//if searchStream == nil {
+	//	log.Printf("搜索结果为空")
+	//}
+	//for {
+	//	searchOrder, err := searchStream.Recv()
+	//	// 如果流结束了
+	//	if err != nil {
+	//		if err == io.EOF {
+	//			break
+	//		}
+	//		log.Fatalf("搜索出错了, error = %v", err)
+	//	}
+	//	log.Printf("搜索结果 : ", searchOrder)
+	//	// todo 放到一个list里去
+	//}
 
+	// 拿到streamProcOrder
+	streamProcOrder, err := client2.ProcessOrder(ctx)
+	if err != nil {
+		log.Fatalf("%v.ProcessOrders(_) = _, %v", client2, err)
+	}
+	if err := streamProcOrder.Send(&wrapper.StringValue{Value: "102"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client2, "102", err)
+	}
+	if err := streamProcOrder.Send(&wrapper.StringValue{Value: "103"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client2, "103", err)
+	}
+	if err := streamProcOrder.Send(&wrapper.StringValue{Value: "104"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client2, "104", err)
+	}
+	channel := make(chan struct{}) // 创建了一个没有缓冲的通道，用于在协程之间进行同步和通信
+	go asyncClientBidirectionalRPC(streamProcOrder, channel)
+
+	if err := streamProcOrder.Send(&wrapper.StringValue{Value: "101"}); err != nil {
+		log.Fatalf("%v.Send(%v) = %v", client2, "101", err)
+	}
+	if err := streamProcOrder.CloseSend(); err != nil {
+		log.Fatal(err)
+	}
+	<-channel // 阻塞代码，等待从通道中接收到一个值
+}
+
+// 开启一个goRouting协程，来处理服务端流rpc发送的消息
+func asyncClientBidirectionalRPC(streamProcOrder om.OrderManagement_ProcessOrderClient, channel chan struct{}) {
+
+	for {
+		combinedShipment, errProcOrder := streamProcOrder.Recv()
+		if errProcOrder == io.EOF {
+			break
+		}
+		log.Printf("打包运输 : ", combinedShipment.OrderList)
+	}
+	<-channel
 }
